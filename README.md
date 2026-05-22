@@ -89,7 +89,7 @@
 - [x] 프로젝트 초기 세팅
 - [x] Next.js 14 + TypeScript 프로젝트 생성
 - [x] Tailwind CSS 설정
-- [ ] shadcn/ui 설정
+- [x] shadcn/ui 설정
 - [ ] Supabase 프로젝트 생성 및 연동
 - [ ] Git 저장소 구조 설정
 
@@ -250,6 +250,54 @@ npm start
 ---
 
 ## 📝 개발 일지
+
+### 2026-05-22 — Phase 1 shadcn/ui 설정
+
+**진행한 작업**
+- `npx shadcn@latest init` 으로 shadcn/ui 초기화
+- 자동 생성된 파일: `src/components/ui/button.tsx`, `src/lib/utils.ts`
+
+**학습한 개념**
+
+**shadcn/ui 가 일반 라이브러리와 다른 점**
+
+일반 UI 라이브러리(MUI 등)는 `node_modules` 안에 컴포넌트가 있어서 수정이 불가능하다.  
+shadcn/ui는 `npx shadcn add button` 하면 **내 `src/components/ui/` 폴더에 코드를 직접 복사**해준다.  
+→ 마음대로 수정 가능, 내부 코드 공부 가능, 필요한 것만 추가
+
+**`src/lib/utils.ts` — cn() 함수**
+
+```typescript
+import { clsx } from "clsx"
+import { twMerge } from "tailwind-merge"
+
+export function cn(...inputs) {
+  return twMerge(clsx(inputs))
+}
+```
+
+Tailwind 클래스를 조건부로 합칠 때 쓰는 유틸 함수다.
+```typescript
+// 예시: 조건에 따라 다른 클래스 적용
+cn("p-4 rounded", isActive && "bg-blue-500", className)
+// → "p-4 rounded bg-blue-500" (isActive가 true일 때)
+```
+
+**`cva` — 컴포넌트 변형(variant) 관리**
+
+`button.tsx`에서 사용하는 `cva`(class-variance-authority)는 같은 컴포넌트의 다양한 스타일을 관리한다.
+```typescript
+// 버튼 하나로 여러 종류를 만들 수 있음
+<Button variant="default">기본 버튼</Button>
+<Button variant="outline">외곽선 버튼</Button>
+<Button variant="destructive">삭제 버튼</Button>
+<Button size="sm">작은 버튼</Button>
+<Button size="lg">큰 버튼</Button>
+```
+
+**다음 단계**: Supabase 프로젝트 생성 및 연동
+
+---
 
 ### 2026-05-22 — Phase 1 프로젝트 초기 세팅
 
