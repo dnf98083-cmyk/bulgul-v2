@@ -1,7 +1,7 @@
 # bulgul-v2
 세븐나이츠 리버스 불굴 길드 웹앱 V2 - Next.js 풀스택 리빌드
 
-이프로젝트는 실제로 세븐나이츠리버스 의 길드원들이 사용하고있는 세븐나이츠리버스 게임의 공략 공유 서비스입니다.
+이 프로젝트는 실제로 세븐나이츠리버스 의 길드원들이 사용하고있는 세븐나이츠리버스 게임의 공략 공유 서비스입니다.
 
 # 🔥 불굴 길드 V2
 
@@ -87,8 +87,9 @@
 
 ### Phase 1: 기초 설정 (Week 1)
 - [x] 프로젝트 초기 세팅
-- [ ] Next.js 14 + TypeScript 프로젝트 생성
-- [ ] Tailwind CSS + shadcn/ui 설정
+- [x] Next.js 14 + TypeScript 프로젝트 생성
+- [x] Tailwind CSS 설정
+- [ ] shadcn/ui 설정
 - [ ] Supabase 프로젝트 생성 및 연동
 - [ ] Git 저장소 구조 설정
 
@@ -146,45 +147,64 @@
 
 ---
 
-## 📁 프로젝트 구조 (예정)
+## 📁 프로젝트 구조
 
 ```
 bulgul-v2/
-├── app/
-│   ├── (auth)/
-│   │   ├── login/
-│   │   └── layout.tsx
-│   ├── (main)/
-│   │   ├── layout.tsx
-│   │   ├── page.tsx              # 홈
-│   │   ├── guild-war/            # 길드전 공격
-│   │   ├── deck-plan/            # 덱편성
-│   │   ├── totalwar/             # 총력전
-│   │   ├── ranking/              # 랭킹
-│   │   └── pve/                  # PVE 공략
-│   └── api/
-│       ├── auth/
-│       ├── guild-war/
-│       └── ranking/
+├── src/
+│   └── app/
+│       ├── (auth)/
+│       │   ├── login/
+│       │   └── layout.tsx
+│       ├── (main)/
+│       │   ├── layout.tsx
+│       │   ├── page.tsx              # 홈
+│       │   ├── guild-war/            # 길드전 공격
+│       │   ├── deck-plan/            # 덱편성
+│       │   ├── totalwar/             # 총력전
+│       │   ├── ranking/              # 랭킹
+│       │   └── pve/                  # PVE 공략
+│       └── api/
+│           ├── auth/
+│           ├── guild-war/
+│           └── ranking/
 ├── components/
-│   ├── ui/                       # shadcn/ui 컴포넌트
-│   ├── guild-war/                # 길드전 전용
-│   ├── shared/                   # 공통 컴포넌트
-│   └── layout/                   # 레이아웃
+│   ├── ui/                           # shadcn/ui 컴포넌트
+│   ├── guild-war/                    # 길드전 전용
+│   ├── shared/                       # 공통 컴포넌트
+│   └── layout/                       # 레이아웃
 ├── lib/
-│   ├── supabase/                 # Supabase 클라이언트
-│   ├── types/                    # TypeScript 타입
-│   ├── utils/                    # 유틸 함수
-│   └── hooks/                    # Custom Hooks
+│   ├── supabase/                     # Supabase 클라이언트
+│   ├── types/                        # TypeScript 타입
+│   ├── utils/                        # 유틸 함수
+│   └── hooks/                        # Custom Hooks
 ├── public/
 │   └── images/
-│       ├── chars/                # 캐릭터 이미지
-│       └── pets/                 # 펫 이미지
+│       ├── chars/                    # 캐릭터 이미지
+│       └── pets/                     # 펫 이미지
 ├── prisma/
-│   └── schema.prisma             # DB 스키마
+│   └── schema.prisma                 # DB 스키마
 └── tests/
     ├── unit/
     └── integration/
+```
+
+---
+
+## 🚀 로컬 개발 환경 실행
+
+```bash
+# 의존성 설치
+npm install
+
+# 개발 서버 실행 (http://localhost:3000)
+npm run dev
+
+# 빌드
+npm run build
+
+# 빌드 결과 실행
+npm start
 ```
 
 ---
@@ -221,14 +241,64 @@ bulgul-v2/
 |---|---|---|
 | **코드 구조** | 단일 HTML 파일 (8,800줄) | 모듈화된 컴포넌트 구조 |
 | **타입 안정성** | ❌ 없음 | ✅ TypeScript |
-| **번들 크기** | ~350KB | ~XX KB (최적화 예정) |
-| **초기 로딩** | ~X초 | ~X초 (목표) |
 | **컴포넌트 재사용** | 어려움 | 쉬움 |
 | **테스트** | ❌ 없음 | ✅ Jest + RTL |
 | **배포** | GitHub Pages | Vercel |
 | **실시간 DB** | Firebase | Supabase |
 | **SEO** | 제한적 | ✅ 최적화 |
-| **성능 점수** | XX점 | XX점 (목표) |
+
+---
+
+## 📝 개발 일지
+
+### 2026-05-22 — Phase 1 프로젝트 초기 세팅
+
+**진행한 작업**
+- `create-next-app`으로 Next.js 14 프로젝트 생성
+- 선택 옵션: TypeScript, Tailwind CSS, App Router, ESLint, src/ 폴더
+
+**학습한 개념**
+
+**create-next-app 이란?**  
+Next.js 공식 프로젝트 생성 도구. 폴더 구조, 설정 파일, 의존성을 자동으로 세팅해준다.
+
+**App Router vs Pages Router**  
+Next.js 13부터 도입된 새로운 라우팅 방식. `src/app` 폴더 안의 폴더 구조가 URL 경로가 된다.  
+예) `src/app/guild-war/page.tsx` → `/guild-war` 페이지
+
+**TypeScript를 쓰는 이유**  
+```typescript
+// Vanilla JS (V1 방식) — 타입 오류를 런타임에 발견
+function getUser(id) {
+  return users[id] // id가 숫자인지 문자열인지 모름
+}
+
+// TypeScript (V2 방식) — 타입 오류를 코딩할 때 발견
+function getUser(id: number): User {
+  return users[id] // id는 반드시 숫자, 반환값은 반드시 User 타입
+}
+```
+
+**Tailwind CSS를 쓰는 이유**  
+별도 CSS 파일 없이 클래스명으로 스타일링. 유지보수가 쉽고 번들 크기가 작다.
+```html
+<!-- 기존 CSS 방식 -->
+<div class="card">...</div>
+/* card { padding: 16px; border-radius: 8px; background: white; } */
+
+<!-- Tailwind 방식 -->
+<div class="p-4 rounded-lg bg-white">...</div>
+```
+
+**생성된 주요 파일 설명**
+- `src/app/layout.tsx` — 모든 페이지에 공통 적용되는 레이아웃 (헤더, 폰트 등)
+- `src/app/page.tsx` — `/` 루트 경로의 메인 페이지
+- `src/app/globals.css` — 전역 CSS (Tailwind 설정 포함)
+- `next.config.ts` — Next.js 설정 파일
+- `tailwind.config.ts` — Tailwind 설정 파일
+- `tsconfig.json` — TypeScript 설정 파일
+
+**다음 단계**: shadcn/ui 설치 및 설정
 
 ---
 
@@ -236,23 +306,6 @@ bulgul-v2/
 
 - **V1 저장소**: [bulgul-guild](https://github.com/dnf98083-cmyk/bulgul-guild)
 - **V1 배포**: [https://dnf98083-cmyk.github.io/bulgul-guild/](https://dnf98083-cmyk.github.io/bulgul-guild/)
-- **기술 문서**: (작성 예정)
-- **API 문서**: (작성 예정)
-
----
-
-## 📝 개발 일지
-
-### 2026-05-20
-- 🎉 프로젝트 시작
-- 📋 기술 스택 선정 완료
-- 📝 README 작성
-
----
-
-## 🤝 기여
-
-이 프로젝트는 개인 학습 목적으로 진행됩니다.
 
 ---
 
@@ -261,14 +314,3 @@ bulgul-v2/
 **김우림**
 - GitHub: [@dnf98083-cmyk](https://github.com/dnf98083-cmyk)
 - 불굴 길드 관리자
-
----
-
-## 📄 라이선스
-
-이 프로젝트는 세븐나이츠 리버스 불굴 길드 전용으로 제작되었습니다.
-
----
-
-> **참고**: 이 프로젝트는 [V1](https://github.com/dnf98083-cmyk/bulgul-guild)의 전면 리빌드입니다.  
-> 기존 기능은 유지하면서 최신 기술 스택으로 마이그레이션하는 것이 목표입니다.
