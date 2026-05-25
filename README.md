@@ -100,7 +100,7 @@
   - 닉네임 + 입장코드 방식 유지
   - 닉네임 드롭다운 선택
 - [x] NextAuth.js 설정
-- [ ] 권한 관리 미들웨어
+- [x] 권한 관리 프록시 (비로그인 시 /login 리다이렉트)
 
 ### Phase 3: 핵심 기능 (Week 3-6)
 - [ ] **길드전 공격 페이지** (Week 3-4)
@@ -249,6 +249,56 @@ npm start
 ---
 
 ## 📝 개발 일지
+
+### 2026-05-25 — Phase 2 권한 관리 프록시 (proxy.ts)
+
+**진행한 작업**
+- `proxy.ts` 생성 (프로젝트 루트)
+- 비로그인 상태에서 모든 페이지 접근 시 `/login`으로 자동 리다이렉트
+- 이미 로그인된 상태에서 `/login` 접근 시 `/`로 자동 리다이렉트
+
+**학습한 개념**
+
+**Next.js 16의 Breaking Change — `middleware.ts` → `proxy.ts`**
+
+기존 Next.js 14/15에서는 `middleware.ts` 파일을 프로젝트 루트에 두면 모든 요청을 가로챌 수 있었다.
+Next.js 16부터 이 파일 이름이 `proxy.ts`로 변경되었고, 함수 이름도 `middleware` → `proxy`로 바뀌었다.
+또한 Edge Runtime이 더 이상 지원되지 않아 Node.js Runtime만 사용한다.
+
+**proxy.ts가 하는 일**
+
+사용자가 어떤 URL을 요청하든 페이지가 렌더링되기 **전에** 이 함수가 먼저 실행된다.
+로그인 여부를 확인해서 접근을 허용할지, 다른 페이지로 보낼지 결정할 수 있다.
+
+```
+사용자 요청 → proxy() 실행 → 조건 확인 → 허용 or 리다이렉트 → 페이지 렌더링
+```
+
+**`getToken()`으로 로그인 상태 확인**
+
+NextAuth.js는 로그인 시 JWT 토큰을 쿠키에 저장한다.
+`getToken()`은 그 쿠키를 읽어서 로그인 상태인지 확인하는 함수다.
+토큰이 있으면 로그인 상태, 없으면 비로그인 상태.
+
+```ts
+const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
+// token이 null → 비로그인
+// token이 객체 → 로그인됨 (nickname, role 등 정보 포함)
+```
+
+**`matcher` — 어떤 경로에서 실행할지 지정**
+
+```ts
+export const config = {
+  matcher: ['/((?!api|_next/static|_next/image|favicon.ico).*)'],
+}
+```
+`api`, `_next/static`, `_next/image`, `favicon.ico`를 제외한 모든 경로에서 proxy()가 실행된다.
+API 라우트와 정적 파일은 로그인 체크가 필요 없으므로 제외한다.
+
+**다음 단계**: Phase 3 — 메인 레이아웃 및 네비게이션 구성
+
+---
 
 ### 2026-05-25 — Vercel 배포 연동
 
