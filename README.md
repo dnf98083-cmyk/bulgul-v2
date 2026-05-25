@@ -94,9 +94,8 @@
 - [ ] Git 저장소 구조 설정
 
 ### Phase 2: 인증 시스템 (Week 2)
-- [ ] Supabase 테이블 설계
-  - `users` (사용자)
-  - `roles` (역할: 관리자/연구원/일반)
+- [x] Supabase 테이블 설계
+  - `users` (사용자 + 역할 통합)
 - [ ] 로그인 페이지 구현
   - 닉네임 + 입장코드 방식 유지
   - 자동완성 기능
@@ -250,6 +249,58 @@ npm start
 ---
 
 ## 📝 개발 일지
+
+### 2026-05-25 — Phase 2 DB 테이블 설계 및 RLS 설정
+
+**진행한 작업**
+- `supabase/migrations/001_create_users.sql` 마이그레이션 파일 생성
+- Firebase `allowedUsers` + `roles` → PostgreSQL `users` 테이블로 통합 설계
+- RLS(Row Level Security) 활성화 및 조회 정책 설정
+
+**학습한 개념**
+
+**Firebase NoSQL → PostgreSQL 변환**
+
+Firebase는 NoSQL이라 같은 사람 데이터를 `allowedUsers/닉네임`과 `roles/닉네임`으로 따로 저장했다.
+PostgreSQL은 같은 사람 데이터를 한 행(row)에 모아두는 게 효율적이라 두 컬렉션을 `users` 테이블 하나로 통합했다.
+
+**`users` 테이블 설계 포인트**
+```sql
+CREATE TABLE users (
+  id         uuid DEFAULT gen_random_uuid() PRIMARY KEY,  -- 자동 생성 고유 ID
+  nickname   text NOT NULL UNIQUE,                        -- 중복 닉네임 불가
+  entry_code char(6) NOT NULL,                            -- 정확히 6자리 고정
+  role       text NOT NULL DEFAULT '일반'
+             CHECK (role IN ('일반', '연구원', '관리자')), -- DB 레벨 유효성 검사
+  created_at timestamptz DEFAULT now()                    -- 시간대 포함 자동 기록
+);
+```
+- `char(6)` vs `text`: char(6)은 6자리 아니면 저장 자체가 안 됨
+- `CHECK`: 허용된 값 외엔 DB가 직접 막아줌 (코드 실수 방지)
+- `DEFAULT '일반'`: role 안 넣으면 자동으로 일반 등급
+
+**RLS (Row Level Security)**
+
+Supabase는 테이블 생성 시 기본적으로 외부에서 누구나 접근 가능하다.
+RLS를 활성화하면 정책(Policy)으로 접근 권한을 세밀하게 제어할 수 있다.
+```sql
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "로그인한 사용자는 조회 가능"
+  ON users FOR SELECT
+  USING (auth.role() = 'authenticated');
+```
+- `auth.role() = 'authenticated'`: 로그인된 사용자만 조회 허용
+- 비로그인 상태에서 API 호출하면 데이터가 반환되지 않음
+
+**마이그레이션 파일을 Git에 관리하는 이유**
+
+Supabase SQL Editor에서 실행한 SQL을 `supabase/migrations/` 폴더에 파일로 저장한다.
+DB를 날려도 파일 순서대로 실행하면 동일한 구조 복원 가능. 팀원이 생겨도 같은 환경 재현 가능.
+
+**다음 단계**: NextAuth.js 연동 및 로그인 페이지 구현
+
+---
 
 ### 2026-05-22 — Phase 1 shadcn/ui 설정
 
