@@ -11,3 +11,7 @@ ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "로그인한 사용자는 조회 가능"
   ON users FOR SELECT
   USING (auth.role() = 'authenticated');
+
+CREATE POLICY "닉네임 목록은 누구나 조회 가능"
+  ON users FOR SELECT
+  USING (true);

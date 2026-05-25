@@ -96,9 +96,9 @@
 ### Phase 2: 인증 시스템 (Week 2)
 - [x] Supabase 테이블 설계
   - `users` (사용자 + 역할 통합)
-- [ ] 로그인 페이지 구현
+- [x] 로그인 페이지 구현
   - 닉네임 + 입장코드 방식 유지
-  - 자동완성 기능
+  - 닉네임 드롭다운 선택
 - [x] NextAuth.js 설정
 - [ ] 권한 관리 미들웨어
 
@@ -347,6 +347,45 @@ JWT를 암호화하는 키. 없으면 NextAuth가 실행 자체를 거부한다.
 로컬 개발용은 아무 문자열이나 써도 되지만, 배포 시엔 반드시 랜덤한 긴 값으로 교체해야 한다.
 
 **다음 단계**: 로그인 페이지 UI 구현
+
+---
+
+### 2026-05-25 — Phase 2 로그인 페이지 UI
+
+**진행한 작업**
+- `src/components/providers.tsx` 생성 (SessionProvider 래퍼)
+- `src/app/layout.tsx`에 Providers 추가
+- `src/app/login/page.tsx` 생성 (닉네임 드롭다운 + 입장코드 입력)
+- 닉네임 목록 누구나 조회 가능한 RLS 정책 추가
+
+**학습한 개념**
+
+**SessionProvider가 필요한 이유**
+
+NextAuth의 `useSession()`, `signIn()` 같은 훅은 내부적으로 React Context를 사용한다.
+App Router에서는 `layout.tsx`에 `SessionProvider`로 감싸줘야 모든 페이지에서 세션 접근이 가능하다.
+단, `SessionProvider`는 `'use client'`가 필요하기 때문에 별도 `providers.tsx` 파일로 분리해서 만든다.
+
+**`'use client'` 가 필요한 이유**
+
+Next.js App Router는 기본적으로 모든 컴포넌트가 서버 컴포넌트다.
+`useState`, `useEffect`, 이벤트 핸들러처럼 브라우저에서만 동작하는 코드는 파일 맨 위에 `'use client'`를 선언해야 한다.
+
+**로그인 흐름**
+```
+1. 페이지 로드 → Supabase에서 닉네임 목록 fetch (useEffect)
+2. 사용자가 닉네임 선택 + 코드 입력
+3. signIn('credentials', { nickname, entry_code, redirect: false })
+4. NextAuth → authorize() → Supabase DB 검증
+5. 성공: router.push('/') / 실패: 에러 메시지 표시
+```
+
+**`redirect: false`를 쓰는 이유**
+
+`signIn()`의 기본값은 로그인 실패 시 에러 페이지로 리다이렉트한다.
+`redirect: false`로 설정하면 결과값(`result.error`)을 직접 받아서 에러 메시지를 페이지 안에서 처리할 수 있다.
+
+**다음 단계**: 권한 관리 미들웨어 (비로그인 시 /login으로 리다이렉트)
 
 ---
 
