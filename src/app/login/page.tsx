@@ -45,18 +45,19 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-950">
-      <div className="w-full max-w-sm p-8 rounded-2xl bg-gray-900 border border-gray-800">
-        <h1 className="text-2xl font-bold text-white text-center mb-2">불굴 길드</h1>
-        <p className="text-gray-400 text-center text-sm mb-8">닉네임과 입장코드를 입력해주세요</p>
+    <div className="min-h-screen flex items-center justify-center bg-[#0c0c1e]">
+      <div className="w-full max-w-sm p-8 rounded-2xl bg-[#0f0f26] border border-amber-900/30">
+        <p className="text-amber-500 text-xs font-medium tracking-widest uppercase text-center mb-1">Seven Knights Reverse</p>
+        <h1 className="text-2xl font-bold text-white text-center mb-1">불굴 길드</h1>
+        <p className="text-slate-500 text-center text-sm mb-8">닉네임과 입장코드를 입력해주세요</p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm text-gray-400 mb-1">닉네임</label>
+            <label className="block text-sm text-slate-400 mb-1">닉네임</label>
             <select
               value={nickname}
               onChange={(e) => setNickname(e.target.value)}
-              className="w-full px-4 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white focus:outline-none focus:border-blue-500"
+              className="w-full px-4 py-2 rounded-lg bg-[#16163a] border border-amber-900/30 text-white focus:outline-none focus:border-amber-500"
               required
             >
               <option value="">닉네임 선택</option>
@@ -67,14 +68,14 @@ export default function LoginPage() {
           </div>
 
           <div>
-            <label className="block text-sm text-gray-400 mb-1">입장코드</label>
+            <label className="block text-sm text-slate-400 mb-1">입장코드</label>
             <input
               type="password"
               value={entryCode}
               onChange={(e) => setEntryCode(e.target.value)}
               maxLength={6}
               placeholder="6자리 코드"
-              className="w-full px-4 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white placeholder-gray-600 focus:outline-none focus:border-blue-500"
+              className="w-full px-4 py-2 rounded-lg bg-[#16163a] border border-amber-900/30 text-white placeholder-slate-600 focus:outline-none focus:border-amber-500"
               required
             />
           </div>
@@ -86,7 +87,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-medium transition-colors"
+            className="w-full py-2 rounded-lg bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-black font-semibold transition-colors"
           >
             {loading ? '확인 중...' : '입장'}
           </button>

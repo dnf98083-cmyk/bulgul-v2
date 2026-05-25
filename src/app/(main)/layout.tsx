@@ -6,7 +6,7 @@ export default function MainLayout({
   children: React.ReactNode
 }) {
   return (
-    <div className="min-h-screen bg-gray-950 flex">
+    <div className="min-h-screen bg-[#0c0c1e] flex">
       {/* PC: 왼쪽 사이드바 */}
       <Nav />
 
