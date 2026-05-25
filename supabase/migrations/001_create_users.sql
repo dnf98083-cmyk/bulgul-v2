@@ -5,3 +5,9 @@ CREATE TABLE users (
   role       text NOT NULL DEFAULT '일반' CHECK (role IN ('일반', '연구원', '관리자')),
   created_at timestamptz DEFAULT now()
 );
+
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "로그인한 사용자는 조회 가능"
+  ON users FOR SELECT
+  USING (auth.role() = 'authenticated');
