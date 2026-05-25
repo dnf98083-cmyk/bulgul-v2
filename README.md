@@ -90,8 +90,8 @@
 - [x] Next.js 14 + TypeScript 프로젝트 생성
 - [x] Tailwind CSS 설정
 - [x] shadcn/ui 설정
-- [ ] Supabase 프로젝트 생성 및 연동
-- [ ] Git 저장소 구조 설정
+- [x] Supabase 프로젝트 생성 및 연동
+- [x] Vercel 배포 연동 (https://bulgul-v2.vercel.app)
 
 ### Phase 2: 인증 시스템 (Week 2)
 - [x] Supabase 테이블 설계
@@ -249,6 +249,41 @@ npm start
 ---
 
 ## 📝 개발 일지
+
+### 2026-05-25 — Vercel 배포 연동
+
+**진행한 작업**
+- Vercel 계정 생성 (GitHub 로그인 연동)
+- `bulgul-v2` GitHub 저장소 Import → 자동 배포 설정
+- 환경변수 4개 Vercel에 등록 (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXTAUTH_SECRET`, `NEXTAUTH_URL`)
+- 배포 완료 → [https://bulgul-v2.vercel.app](https://bulgul-v2.vercel.app)
+
+**학습한 개념**
+
+**왜 `.env.local`을 그대로 쓰면 안 되나?**
+
+`.env.local`은 보안상 `.gitignore`에 포함되어 있어서 GitHub에 올라가지 않는다.
+GitHub에 없으니 Vercel도 그 값을 모른다 → Vercel 대시보드에서 직접 환경변수를 등록해줘야 한다.
+```
+로컬 개발: .env.local (내 컴퓨터에만 존재)
+Vercel 배포: 대시보드 Environment Variables (Vercel 서버에만 존재)
+```
+
+**`NEXTAUTH_URL`이 필요한 이유**
+
+NextAuth.js는 로그인/로그아웃 후 리다이렉트할 때 이 주소를 기준으로 삼는다.
+로컬에서는 `http://localhost:3000`, 배포 후에는 `https://bulgul-v2.vercel.app`으로 달라지기 때문에 환경별로 따로 설정해야 한다.
+
+**Vercel 자동 배포 흐름**
+```
+git push → GitHub → Vercel 감지 → 자동 빌드 → 자동 배포
+```
+`main` 브랜치에 push하면 실제 서비스 주소가 자동으로 업데이트된다.
+코드를 고치고 push하는 것만으로 배포 완료 — 별도 작업 불필요.
+
+**다음 단계**: 권한 관리 미들웨어 (비로그인 시 /login으로 리다이렉트)
+
+---
 
 ### 2026-05-25 — Phase 2 DB 테이블 설계 및 RLS 설정
 
