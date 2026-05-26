@@ -41,7 +41,6 @@ type PveBuild = {
 // ── 상수 ──────────────────────────────────────────
 const DAYS = ['월', '화', '수', '목', '금', '토', '일'] as const
 const DAY_KEY: Record<string, string> = { 월: 'mon', 화: 'tue', 수: 'wed', 목: 'thu', 금: 'fri', 토: 'sat', 일: 'sun' }
-const DAY_LABEL: Record<string, string> = { mon: '월', tue: '화', wed: '수', thu: '목', fri: '금', sat: '토', sun: '일' }
 
 const ADVENT_TABS = [
   { key: 'destruct1', label: '파괴신 1라' },
@@ -179,7 +178,7 @@ export default function PvePage() {
     if (mainTab !== 'score') return
     setScLoading(true)
     const type = scoreType
-    const key  = type === 'siege' ? DAY_KEY[selectedDay] : '파괴신'
+    const key  = type === 'siege' ? selectedDay : '파괴신'
     supabase
       .from('pve_scores')
       .select('*')
