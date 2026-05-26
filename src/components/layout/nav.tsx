@@ -3,15 +3,15 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useSession, signOut } from 'next-auth/react'
-import { Home, Swords, Trophy, LayoutGrid, Target, LogOut } from 'lucide-react'
+import { Home, Swords, Trophy, LayoutGrid, Target, LogOut, Shield } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const navItems = [
   { href: '/',          icon: Home,       label: '홈' },
   { href: '/guild-war', icon: Swords,     label: '길드전' },
+  { href: '/pve',       icon: Target,     label: 'PVE' },
   { href: '/ranking',   icon: Trophy,     label: '랭킹' },
   { href: '/deck-plan', icon: LayoutGrid, label: '덱편성' },
-  { href: '/totalwar',  icon: Target,     label: '총력전' },
 ]
 
 export default function Nav() {
@@ -72,12 +72,26 @@ export default function Nav() {
           })}
         </nav>
 
-        {/* 유저 정보 + 로그아웃 */}
+        {/* 유저 정보 + 관리자 메뉴 + 로그아웃 */}
         <div className="px-3 py-4 border-t border-amber-900/30">
           <div className="px-3 py-2 mb-1">
             <p className="text-sm text-slate-200 font-medium">{session?.user?.name}</p>
             <p className="text-xs text-amber-600">{(session?.user as any)?.role}</p>
           </div>
+          {(session?.user as any)?.role === '관리자' && (
+            <Link
+              href="/admin/users"
+              className={cn(
+                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors mb-1',
+                pathname === '/admin/users'
+                  ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
+                  : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'
+              )}
+            >
+              <Shield size={18} />
+              길드원 관리
+            </Link>
+          )}
           <button
             onClick={() => signOut({ callbackUrl: '/login' })}
             className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm text-slate-500 hover:bg-white/5 hover:text-slate-300 transition-colors"

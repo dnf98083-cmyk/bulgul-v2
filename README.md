@@ -103,36 +103,26 @@
 - [x] 권한 관리 프록시 (비로그인 시 /login 리다이렉트)
 
 ### Phase 3: 핵심 기능 (Week 3-6)
-- [ ] **길드전 공격 페이지** (Week 3-4)
-  - 방어팀 선택
-  - 공격덱 목록 (정렬, 필터)
-  - 전적 기록 (3가지 방식)
-  - 실시간 업데이트
+- [x] **Firebase → Supabase 데이터 마이그레이션** (`scripts/migrate.js`)
+  - 사용자(35명), 캐릭터(108개), 방어팀(34개), 공격팀(152개), 공지사항(9개), PVE 점수(253개), 덱편성(10명), 총력전(15명), PVE 빌드(58개)
+- [x] **반응형 레이아웃** (모바일: 하단 네비 / PC: 왼쪽 사이드바)
+- [x] **길드전 공격 페이지** `/guild-war`
+  - 방어팀 선택 → 공격팀 목록 2-depth 구조
+  - 타입 배지 (확실한 승 / 내줘도 됨 / 위험 / 보통)
+  - 캐릭터 칩, 진형/반지/스킬순/펫/장비 표시
+  - 관리자/연구원: 승/패 버튼 → Supabase 실시간 업데이트
+- [x] **PVE 페이지** `/pve`
+  - 공성전/파괴신 점수 랭킹 (이번시즌/지난시즌)
+  - 공성전/강림/레이드 빌드 가이드 (아코디언 카드)
+- [x] **길드원 관리 페이지** `/admin/users` (관리자 전용)
+  - 전체 길드원 목록
+  - 역할 변경 드롭다운 (일반/연구원/관리자)
+  - 입장코드 재발급 / 회원 삭제
 
-- [ ] **랭킹 페이지** (Week 5)
-  - 길드전 랭킹
-  - 공성전 랭킹
-  - 파괴신 랭킹
-  - AI 스캔 기능 (이미지 → 점수 인식)
-
-- [ ] **덱편성 페이지** (Week 6)
-  - 팀별 공/방 배정
-  - 반지 관리
-  - 공유 기능
-  - 피드백 시스템
-
-### Phase 4: 추가 기능 (Week 7-8)
-- [ ] 총력전 페이지
-- [ ] PVE 공략 페이지
-- [ ] 공지사항
-- [ ] 건의사항
-
-### Phase 5: 관리자 기능 (Week 9-10)
-- [ ] 길드원 관리
-- [ ] 캐릭터/펫 DB 관리
-- [ ] 제보 관리
-- [ ] 승패 관리
-- [ ] 데이터 복구
+- [ ] **랭킹 페이지** `/ranking`
+- [ ] **덱편성 페이지** `/deck-plan`
+- [ ] **총력전 페이지** `/totalwar`
+- [ ] **공지사항 페이지** `/notices`
 
 ### Phase 6: 최적화 & 배포 (Week 11-12)
 - [ ] 성능 최적화
@@ -249,6 +239,142 @@ npm start
 ---
 
 ## 📝 개발 일지
+
+### 2026-05-25~26 — Phase 3 핵심 기능 구현 (길드전 / PVE / 관리자)
+
+**진행한 작업**
+1. Firebase Realtime DB → Supabase 전체 데이터 마이그레이션 (`scripts/migrate.js`)
+2. 게임 테이블 전체 설계 (`supabase/migrations/002_create_game_tables.sql`)
+3. 반응형 레이아웃 (모바일 하단 네비 / PC 사이드바)
+4. 길드전 공격 페이지 (`/guild-war`)
+5. PVE 페이지 (`/pve`) — 점수 랭킹 + 빌드 가이드
+6. 관리자 길드원 관리 페이지 (`/admin/users`)
+
+---
+
+**학습한 개념 1: Firebase NoSQL → PostgreSQL 관계형 DB 변환**
+
+Firebase에서는 데이터를 트리 구조로 저장했다:
+```json
+{
+  "allowedUsers": { "김우림": { "code": "123456" } },
+  "roles":        { "김우림": "관리자" },
+  "defenseTeams": {
+    "-Abc123": {
+      "name": "방어팀 A",
+      "attackTeams": { "-Xyz789": { "name": "공격팀 1", "win": 5 } }
+    }
+  }
+}
+```
+
+PostgreSQL에서는 관련 데이터를 테이블로 분리하고 외래키(FK)로 연결한다:
+```sql
+-- 사용자 (Firebase allowedUsers + roles를 하나로 통합)
+CREATE TABLE users (nickname text, role text, entry_code char(6));
+
+-- 방어팀 (Firebase push key를 text PK로 그대로 활용)
+CREATE TABLE defense_teams (id text PRIMARY KEY, name text, order_idx int);
+
+-- 공격팀 (defense_team_id FK로 방어팀과 연결)
+CREATE TABLE attack_teams (
+  id text PRIMARY KEY,
+  defense_team_id text REFERENCES defense_teams(id),
+  characters text[],   -- 배열 타입! PostgreSQL만의 기능
+  win int DEFAULT 0,
+  lose int DEFAULT 0
+);
+```
+
+**왜 Firebase push key를 text로 쓰나?**  
+Firebase 내보내기 파일에는 `-Abc123` 같은 push key로 방어팀-공격팀이 이미 연결되어 있다.
+새 UUID를 쓰면 마이그레이션 스크립트에서 기존 관계를 다시 매핑해야 한다.
+text 타입 PK로 그대로 쓰면 마이그레이션 코드가 단순해진다.
+
+---
+
+**학습한 개념 2: 반응형 레이아웃 — 모바일과 PC를 하나의 코드로**
+
+Tailwind CSS의 반응형 접두사(`md:`)로 브레이크포인트별 스타일을 지정한다:
+```tsx
+// 모바일(기본): 하단 네비 / PC(md 이상): 왼쪽 사이드바
+<nav className="md:hidden fixed bottom-0 left-0 right-0 h-16"> {/* 모바일용 */}
+<aside className="hidden md:flex fixed left-0 top-0 w-56">    {/* PC용 */}
+
+// 메인 콘텐츠: PC에서 사이드바(w-56=224px) 만큼 왼쪽 여백
+<main className="flex-1 md:ml-56 pb-20 md:pb-0">
+```
+- `md:` = 768px 이상 적용
+- 모바일에서 하단 네비 때문에 콘텐츠가 가려지지 않도록 `pb-20` (80px 하단 패딩)
+- PC에서는 사이드바가 fixed라서 `ml-56`으로 밀어줌
+
+---
+
+**학습한 개념 3: 2-Depth 화면 전환 (선택 → 목록)**
+
+별도 페이지 이동 없이 state 하나로 화면 전환:
+```tsx
+const [selectedDef, setSelectedDef] = useState<DefenseTeam | null>(null)
+
+if (!selectedDef) {
+  return <방어팀 목록 />  // selectedDef가 null이면 방어팀 목록 화면
+}
+return <공격팀 목록 />    // selectedDef가 있으면 공격팀 화면
+```
+URL이 바뀌지 않기 때문에 뒤로가기 버튼은 `setSelectedDef(null)`로 직접 구현한다.
+이 패턴은 모달 없이 "선택 → 상세" 흐름을 구현할 때 자주 쓴다.
+
+---
+
+**학습한 개념 4: Supabase 실시간 업데이트 (Optimistic UI)**
+
+승/패 버튼을 눌렀을 때 DB 응답을 기다리지 않고 화면을 먼저 바꾸는 패턴:
+```tsx
+async function recordResult(atkId: string, result: 'win' | 'lose') {
+  const update = result === 'win' ? { win: atk.win + 1 } : { lose: atk.lose + 1 }
+
+  // 1. 화면 즉시 업데이트 (사용자는 바로 결과를 봄)
+  setAttackTeams(prev => prev.map(a => a.id === atkId ? { ...a, ...update } : a))
+
+  // 2. DB 업데이트 (비동기, 실패해도 화면은 이미 바뀐 상태)
+  await supabase.from('attack_teams').update(update).eq('id', atkId)
+}
+```
+실제 서비스에선 실패 시 롤백도 해야 하지만, 내부 도구에서는 이 정도로 충분하다.
+
+---
+
+**학습한 개념 5: 아코디언 UI 패턴**
+
+PVE 빌드 페이지에서 각 빌드를 클릭하면 상세 내용이 펼쳐지는 패턴:
+```tsx
+function BuildCard({ build }) {
+  const [open, setOpen] = useState(false)  // 닫힌 상태가 기본값
+
+  return (
+    <div>
+      <button onClick={() => setOpen(v => !v)}>  {/* v => !v: 현재 값 반전 */}
+        {build.buildName}
+        {open ? <ChevronUp /> : <ChevronDown />}  {/* 아이콘도 같이 전환 */}
+      </button>
+
+      {open && (  /* open이 true일 때만 렌더링됨 */
+        <div className="border-t">
+          <p>{build.deck}</p>
+          <p>{build.skill}</p>
+        </div>
+      )}
+    </div>
+  )
+}
+```
+`{open && <JSX />}` 패턴: `&&` 앞이 false면 JSX 자체가 렌더링되지 않는다.
+
+---
+
+**다음 단계**: 랭킹 페이지, 덱편성 페이지, 공지사항 페이지
+
+---
 
 ### 2026-05-25 — Phase 2 권한 관리 프록시 (proxy.ts)
 
