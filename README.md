@@ -238,6 +238,143 @@ npm start
 
 ---
 
+## 🔧 트러블슈팅
+
+개발 중 발생한 버그와 해결 과정을 기록한다.
+
+---
+
+### [TS-001] 로그인 없이 메인 페이지 접근 가능 — proxy.ts 캐시 문제
+
+**증상**
+로그인하지 않은 상태에서 `http://localhost:3000/` 에 접속해도 홈 화면이 그대로 보임.
+`/login`으로 리다이렉트 되어야 하는데 전혀 작동하지 않았음.
+
+**원인 분석**
+`proxy.ts`를 작성하고 내용도 문법적으로 맞았지만, Next.js 내부 빌드 캐시(`.next/`)가 오래된 상태였다.
+`.next/static/…/_clientMiddlewareManifest.js` 파일을 열어보니:
+
+```js
+self.__MIDDLEWARE_MATCHERS = []  // 비어 있음!
+```
+
+Next.js는 이 파일로 "어떤 경로에서 프록시를 실행할지" 클라이언트 라우터에게 알려준다.
+빌드 캐시가 `proxy.ts`를 인식하기 전에 만들어진 것이라 매처 목록이 비어 있었고,
+그 결과 어떤 경로에서도 프록시가 실행되지 않았다.
+
+**시도한 해결책 1 — proxy.ts 코드 수정** ❌
+이미 코드는 올바른 형태였기 때문에 수정해도 증상이 달라지지 않았다.
+
+**시도한 해결책 2 — (main)/layout.tsx 서버사이드 인증 체크** ✅
+`proxy.ts` 캐시 문제와 무관하게, 레이아웃 자체에서 세션을 확인하도록 변경했다.
+
+```ts
+// src/app/(main)/layout.tsx
+import { getServerSession } from 'next-auth'
+import { redirect } from 'next/navigation'
+import { authOptions } from '@/app/api/auth/[...nextauth]/route'
+
+export default async function MainLayout({ children }) {
+  const session = await getServerSession(authOptions)
+  if (!session) redirect('/login')   // 로그인 없으면 즉시 차단
+  return <>{children}</>
+}
+```
+
+`(main)/layout.tsx`는 홈·길드전·PVE 등 모든 메인 페이지의 공통 부모다.
+여기서 `redirect()`하면 세션이 없는 요청은 자식 페이지 렌더링 자체가 시작되지 않는다.
+
+**교훈**
+- Next.js 공식 문서에도 "proxy에만 의존하지 말고 각 Server Component에서 인증을 검증하라"고 나와 있다.
+- `proxy.ts`는 CDN 엣지에서 빠르게 리다이렉트하는 용도이고, **실질적 보호는 레이아웃/서버 컴포넌트에서** 해야 한다.
+- 개발 중 캐시 문제가 의심되면 `.next/` 폴더를 삭제 후 `npm run dev`를 재실행한다.
+
+---
+
+### [TS-002] PVE 공성전 점수 조회 결과 0건
+
+**증상**
+PVE 페이지에서 공성전 탭을 선택하고 요일을 클릭해도 점수 데이터가 아무것도 표시되지 않음.
+파괴신/강림 탭은 정상이었음.
+
+**원인 분석**
+`pve_scores` 테이블에서 공성전 점수를 조회할 때 요일 키를 영어로 변환하고 있었다:
+
+```ts
+const DAY_KEY: Record<string, string> = {
+  '월': 'mon', '화': 'tue', '수': 'wed',
+  '목': 'thu', '금': 'fri', '토': 'sat', '일': 'sun',
+}
+
+// 잘못된 코드
+const key = type === 'siege' ? DAY_KEY[selectedDay] : '파괴신'
+// selectedDay가 '월'이면 key = 'mon' → DB에 'mon'으로 조회
+
+// DB에 저장된 실제 값: '월', '화', '수', ... (한국어!)
+```
+
+Firebase 마이그레이션 시 `pve_scores` 테이블은 원본 데이터 구조를 그대로 보존했기 때문에
+요일 키가 한국어(`월화수목금토일`)로 저장되어 있었다.
+`pve_builds` 테이블은 영어 키(`mon/tue/...`)를 쓰는데, 두 테이블의 규칙이 달랐다.
+
+**해결**
+변환 없이 `selectedDay`를 그대로 사용하도록 수정:
+
+```ts
+// 수정 전
+const key = type === 'siege' ? DAY_KEY[selectedDay] : '파괴신'
+
+// 수정 후
+const key = type === 'siege' ? selectedDay : '파괴신'
+// selectedDay가 '월'이면 key = '월' → DB에 '월'로 조회 ✅
+```
+
+**교훈**
+- 마이그레이션 데이터는 원본 구조를 그대로 유지하는 경우가 많다. 직접 DB 값을 확인하자.
+- 두 테이블이 같은 개념(요일)을 다른 포맷으로 저장할 수 있다. 각 테이블의 실제 값을 Supabase 대시보드에서 확인하는 습관이 중요하다.
+
+---
+
+### [TS-003] 로그인 페이지 닉네임 선택 UX 문제
+
+**증상**
+로그인 페이지에서 `<select>` 드롭다운으로 닉네임을 선택하는 방식이었는데,
+모바일에서는 타이핑으로 필터링이 불가능했고, PC에서도 닉네임이 많아지면 불편했다.
+
+**원인**
+HTML 기본 `<select>` 요소는 옵션 검색/필터 기능이 없다.
+
+**해결**
+`<input type="text">` + 커스텀 드롭다운 목록 조합으로 교체:
+
+```tsx
+// 타이핑 → 실시간 필터
+const filtered = nickname.trim()
+  ? nicknames.filter(n => n.toLowerCase().includes(nickname.toLowerCase()))
+  : nicknames
+
+// 외부 클릭 시 목록 닫기 (useRef 패턴)
+const wrapperRef = useRef<HTMLDivElement>(null)
+useEffect(() => {
+  function handleClick(e: MouseEvent) {
+    if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+      setShowList(false)
+    }
+  }
+  document.addEventListener('mousedown', handleClick)
+  return () => document.removeEventListener('mousedown', handleClick)
+}, [])
+```
+
+입력창에 포커스하면 목록이 열리고, 타이핑하면 실시간으로 필터되며,
+목록 항목 클릭 또는 외부 클릭 시 목록이 닫힌다.
+
+**교훈**
+- 검색/필터가 필요한 드롭다운은 HTML `<select>` 대신 input + 커스텀 목록 패턴을 쓴다.
+- `onMouseDown`으로 선택하는 이유: `onClick`은 `onBlur`보다 늦게 발생해서 목록이 닫힌 뒤 클릭이 무시될 수 있기 때문이다.
+
+---
+
 ## 📝 개발 일지
 
 ### 2026-05-25~26 — Phase 3 핵심 기능 구현 (길드전 / PVE / 관리자)
