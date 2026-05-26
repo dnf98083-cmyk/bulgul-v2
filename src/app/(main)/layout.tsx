@@ -1,10 +1,16 @@
+import { getServerSession } from 'next-auth'
+import { redirect } from 'next/navigation'
+import { authOptions } from '@/app/api/auth/[...nextauth]/route'
 import Nav from '@/components/layout/nav'
 
-export default function MainLayout({
+export default async function MainLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
+  const session = await getServerSession(authOptions)
+  if (!session) redirect('/login')
+
   return (
     <div className="min-h-screen bg-[#0c0c1e] flex">
       {/* PC: 왼쪽 사이드바 */}

@@ -376,6 +376,110 @@ function BuildCard({ build }) {
 
 ---
 
+### 2026-05-26 — 길드전 페이지 V1 기능 완성 + 로그인 게이트 수정
+
+**진행한 작업**
+1. **길드전 공격 페이지 전면 재작성** — V1과 동등한 기능 복원
+2. **로그인 게이트 버그 수정** — 로그인 없이 페이지 접근되던 문제 해결
+
+---
+
+**길드전 페이지 주요 변경 사항**
+
+| 기능 | 이전 (미구현) | 이후 (완성) |
+|---|---|---|
+| 캐릭터 검색 | ❌ | ✅ 전체 공격덱 대상 실시간 검색 |
+| 방어팀 드롭다운 | 단순 목록 | ✅ 검색 필터 + 승률 표시 |
+| 정렬 | ❌ | ✅ 승률순 / 사용횟수 / 승수순 |
+| 검색 하이라이트 | ❌ | ✅ 매칭 캐릭터 앰버색 강조 |
+| 승률 표시 | ❌ | ✅ 승패 옆에 % 표시 |
+
+---
+
+**학습한 개념 6: 클라이언트 필터링 vs 서버 필터링 선택**
+
+캐릭터 검색 기능을 구현할 때 두 가지 방법을 고려했다:
+
+방법 A (서버 필터링): 검색할 때마다 Supabase에 쿼리
+```ts
+// 검색어가 바뀔 때마다 DB 쿼리
+supabase.from('attack_teams').select('*').contains('characters', [searchTerm])
+```
+
+방법 B (클라이언트 필터링): 처음에 전체 데이터를 불러온 뒤 메모리에서 필터
+```ts
+// 앱 시작 시 한 번만 로드
+const allAttacks = await supabase.from('attack_teams').select('*')
+
+// 검색은 메모리에서 즉시 처리
+const results = allAttacks.filter(a => a.characters.some(c => c.includes(q)))
+```
+
+**이 프로젝트에서 B를 선택한 이유:**
+- 데이터 크기가 작음 (공격팀 152개)
+- 방어팀 선택과 캐릭터 검색이 같은 데이터를 공유해야 함
+- 검색할 때마다 로딩 없이 즉각 반응해야 UX가 좋음
+- 쿼리 횟수가 줄어 Supabase 부하 감소
+
+데이터가 수만 건이라면 서버 필터링이 맞지만, 내부 도구 규모에서는 클라이언트 필터링이 더 실용적이다.
+
+---
+
+**학습한 개념 7: `useMemo`로 파생 상태 최적화**
+
+같은 데이터에서 다양한 "뷰"를 만들 때 `useMemo`를 쓴다:
+```tsx
+// allAttacks와 defenseTeams에서 통계를 계산 — 매 렌더마다 재계산하면 낭비
+const defsWithStats = useMemo(() =>
+  defenseTeams.map(def => {
+    const atks = allAttacks.filter(a => a.defense_team_id === def.id)
+    const totalWin  = atks.reduce((s, a) => s + a.win, 0)
+    const totalLose = atks.reduce((s, a) => s + a.lose, 0)
+    return { ...def, totalWin, totalLose, winRate: totalWin / (totalWin + totalLose) }
+  }),
+[defenseTeams, allAttacks])  // ← 이 값이 바뀔 때만 재계산
+```
+`useMemo`의 두 번째 인자(의존성 배열)가 바뀌지 않으면 이전 계산 결과를 그대로 쓴다.
+`useState`로 만든 값처럼 읽을 수 있지만, 자동으로 업데이트된다.
+
+---
+
+**학습한 개념 8: 로그인 게이트 — proxy.ts vs 레이아웃 체크**
+
+`proxy.ts`는 요청이 들어올 때 가장 먼저 실행되어 빠르게 리다이렉트할 수 있다.
+그런데 개발 중에 Next.js 빌드 캐시(`.next/`)가 오래되면 proxy.ts 변경이 반영되지 않는 문제가 생겼다.
+
+**더 안전한 방법: 레이아웃에서 직접 세션 확인**
+
+```ts
+// src/app/(main)/layout.tsx — 모든 메인 페이지의 공통 부모
+import { getServerSession } from 'next-auth'
+import { redirect } from 'next/navigation'
+
+export default async function MainLayout({ children }) {
+  const session = await getServerSession(authOptions)
+  if (!session) redirect('/login')   // 세션 없으면 즉시 로그인 페이지로
+  return <>{children}</>
+}
+```
+
+`getServerSession()`은 서버에서 실행되어 현재 사용자의 세션을 가져온다.
+`redirect()`는 Next.js App Router의 서버사이드 리다이렉트 함수다.
+
+```
+사용자 요청 → layout.tsx 실행 (서버) → getServerSession() → 없으면 redirect('/login')
+```
+
+proxy.ts는 여전히 빠른 CDN 수준의 리다이렉트 역할로 두고,
+layout.tsx가 실질적인 인증 보호를 담당하는 구조가 권장된다.
+(Next.js 공식 docs에서도 "proxy에만 의존하지 말고 각 Server Function에서 인증을 검증하라"고 권고함)
+
+---
+
+**다음 단계**: PVE 빌드 수정 기능 (관리자/연구원), 랭킹 페이지
+
+---
+
 ### 2026-05-25 — Phase 2 권한 관리 프록시 (proxy.ts)
 
 **진행한 작업**
