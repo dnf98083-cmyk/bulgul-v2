@@ -5,6 +5,7 @@ import { useSession } from 'next-auth/react'
 import { supabase } from '@/lib/supabase/client'
 import { ChevronDown, Swords, Search, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { FormationGrid } from '@/components/FormationGrid'
 
 type DefenseTeam = { id: string; name: string; order_idx: number }
 type AttackTeam = {
@@ -30,30 +31,37 @@ const TYPE_STYLE: Record<string, string> = {
   '보통':       'bg-slate-500/15   text-slate-400   border-slate-500/30',
 }
 
-type SortKey = 'winRate' | 'usage' | 'wins'
+type SortKey = 'winRate' | 'usage' | 'games'
 
 function pct(win: number, lose: number) {
   const t = win + lose
   return t === 0 ? null : Math.round(win / t * 100)
 }
 
+// V1 방식: 이름·반지·진형·펫·장비·스킬·캐릭터 전체에서 검색
+function matches(atk: AttackTeam, q: string): boolean {
+  const hay = [atk.name, atk.ring, atk.formation, atk.pet, atk.armor, atk.skill, ...(atk.characters ?? [])]
+    .filter(Boolean).join(' ').toLowerCase()
+  return hay.includes(q.toLowerCase())
+}
+
 export default function GuildWarPage() {
   const { data: session } = useSession()
   const isAdmin = ['관리자', '연구원'].includes((session?.user as any)?.role)
 
-  const [defenseTeams, setDefenseTeams]     = useState<DefenseTeam[]>([])
-  const [allAttacks, setAllAttacks]         = useState<AttackTeam[]>([])
-  const [loading, setLoading]               = useState(true)
+  const [defenseTeams, setDefenseTeams] = useState<DefenseTeam[]>([])
+  const [allAttacks, setAllAttacks]     = useState<AttackTeam[]>([])
+  const [loading, setLoading]           = useState(true)
 
-  const [charSearch, setCharSearch]         = useState('')
-  const [selectedDef, setSelectedDef]       = useState<DefenseTeam | null>(null)
-  const [defSearch, setDefSearch]           = useState('')
-  const [showDrop, setShowDrop]             = useState(false)
-  const [sort, setSort]                     = useState<SortKey>('winRate')
+  const [charSearch, setCharSearch]     = useState('')
+  const [selectedDef, setSelectedDef]   = useState<DefenseTeam | null>(null)
+  const [selectedAtk, setSelectedAtk]   = useState<AttackTeam | null>(null)
+  const [defSearch, setDefSearch]       = useState('')
+  const [showDrop, setShowDrop]         = useState(false)
+  const [sort, setSort]                 = useState<SortKey>('winRate')
 
   const dropRef = useRef<HTMLDivElement>(null)
 
-  // 드롭다운 바깥 클릭 시 닫기
   useEffect(() => {
     function handler(e: MouseEvent) {
       if (dropRef.current && !dropRef.current.contains(e.target as Node)) setShowDrop(false)
@@ -62,7 +70,6 @@ export default function GuildWarPage() {
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
-  // 전체 데이터 한 번에 로드
   useEffect(() => {
     Promise.all([
       supabase.from('defense_teams').select('*').order('order_idx'),
@@ -74,7 +81,6 @@ export default function GuildWarPage() {
     })
   }, [])
 
-  // 방어팀 + 통계
   const defsWithStats = useMemo<DefWithStats[]>(() =>
     defenseTeams.map(def => {
       const atks = allAttacks.filter(a => a.defense_team_id === def.id)
@@ -86,32 +92,25 @@ export default function GuildWarPage() {
   [defenseTeams, allAttacks])
 
   const filteredDefs = useMemo(() =>
-    defSearch.trim()
-      ? defsWithStats.filter(d => d.name.includes(defSearch))
-      : defsWithStats,
+    defSearch.trim() ? defsWithStats.filter(d => d.name.includes(defSearch)) : defsWithStats,
   [defsWithStats, defSearch])
 
-  // 표시할 공격팀 목록
+  const isSearch = charSearch.trim().length > 0
+
   const displayAttacks = useMemo<AttackTeam[]>(() => {
     const q = charSearch.trim()
-    if (q) {
-      // 캐릭터 검색: 전체 공격덱에서 검색
-      return allAttacks.filter(a =>
-        a.characters?.some(c => c.includes(q))
-      )
-    }
+    if (q) return allAttacks.filter(a => matches(a, q))
     if (!selectedDef) return []
     const atks = allAttacks.filter(a => a.defense_team_id === selectedDef.id)
     return [...atks].sort((a, b) => {
-      if (sort === 'winRate') {
-        const ap = pct(a.win, a.lose) ?? -1
-        const bp = pct(b.win, b.lose) ?? -1
-        return bp - ap
-      }
-      if (sort === 'usage') return (b.win + b.lose) - (a.win + a.lose)
-      return b.win - a.win
+      if (sort === 'winRate') return (pct(b.win, b.lose) ?? -1) - (pct(a.win, a.lose) ?? -1)
+      return (b.win + b.lose) - (a.win + a.lose)
     })
   }, [charSearch, selectedDef, allAttacks, sort])
+
+  // selectedAtk가 현재 목록에 없으면 null 처리
+  const validAtk = selectedAtk && displayAttacks.find(a => a.id === selectedAtk.id)
+    ? selectedAtk : null
 
   async function recordResult(atkId: string, result: 'win' | 'lose') {
     const atk = allAttacks.find(a => a.id === atkId)
@@ -119,25 +118,25 @@ export default function GuildWarPage() {
     const update = result === 'win' ? { win: atk.win + 1 } : { lose: atk.lose + 1 }
     await supabase.from('attack_teams').update(update).eq('id', atkId)
     setAllAttacks(prev => prev.map(a => a.id === atkId ? { ...a, ...update } : a))
+    setSelectedAtk(prev => prev?.id === atkId ? { ...prev, ...update } : prev)
   }
 
   function selectDef(def: DefWithStats) {
     setSelectedDef(def)
+    setSelectedAtk(null)
     setShowDrop(false)
     setDefSearch('')
     setCharSearch('')
   }
 
-  const isSearch = charSearch.trim().length > 0
-
   if (loading) return (
-    <div className="p-4 md:p-8 max-w-3xl mx-auto">
+    <div className="p-4 md:p-8 max-w-5xl mx-auto">
       <p className="text-slate-500 text-center py-16">불러오는 중...</p>
     </div>
   )
 
   return (
-    <div className="p-4 md:p-8 max-w-3xl mx-auto">
+    <div className="p-4 md:p-8 max-w-5xl mx-auto">
       {/* 헤더 */}
       <div className="flex items-center gap-3 mb-5">
         <Swords size={22} className="text-amber-400" />
@@ -145,19 +144,19 @@ export default function GuildWarPage() {
         <span className="ml-auto text-sm text-slate-500">{defenseTeams.length}개 방어팀</span>
       </div>
 
-      {/* 캐릭터 검색 */}
+      {/* 전체 검색 (V1: 이름·반지·진형·펫·장비·스킬·캐릭터) */}
       <div className="relative mb-3">
         <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
         <input
           type="text"
           value={charSearch}
-          onChange={e => { setCharSearch(e.target.value); setSelectedDef(null) }}
-          placeholder="캐릭터로 공격덱 검색..."
+          onChange={e => { setCharSearch(e.target.value); setSelectedDef(null); setSelectedAtk(null) }}
+          placeholder="이름 · 캐릭터 · 반지 · 진형 · 펫 · 장비로 검색..."
           className="w-full pl-9 pr-9 py-2.5 rounded-xl bg-[#0f0f26] border border-amber-900/20 text-white text-sm placeholder-slate-600 focus:outline-none focus:border-amber-500/40"
         />
         {charSearch && (
           <button
-            onClick={() => setCharSearch('')}
+            onClick={() => { setCharSearch(''); setSelectedAtk(null) }}
             className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
           >
             <X size={15} />
@@ -165,7 +164,7 @@ export default function GuildWarPage() {
         )}
       </div>
 
-      {/* 방어팀 드롭다운 (검색 모드 아닐 때) */}
+      {/* 방어팀 드롭다운 */}
       {!isSearch && (
         <div ref={dropRef} className="relative mb-4">
           <button
@@ -227,7 +226,7 @@ export default function GuildWarPage() {
       {/* 정렬 + 선택 해제 */}
       {selectedDef && !isSearch && (
         <div className="flex items-center gap-2 mb-4">
-          {([['winRate', '승률순'], ['usage', '사용횟수'], ['wins', '승수순']] as [SortKey, string][]).map(([key, label]) => (
+          {([['winRate', '승률순'], ['usage', '사용횟수'], ['games', '전적순']] as [SortKey, string][]).map(([key, label]) => (
             <button
               key={key}
               onClick={() => setSort(key)}
@@ -242,7 +241,7 @@ export default function GuildWarPage() {
             </button>
           ))}
           <button
-            onClick={() => setSelectedDef(null)}
+            onClick={() => { setSelectedDef(null); setSelectedAtk(null) }}
             className="ml-auto flex items-center gap-1 text-xs text-slate-600 hover:text-slate-400 transition-colors"
           >
             <X size={12} /> 해제
@@ -257,94 +256,166 @@ export default function GuildWarPage() {
         </p>
       )}
 
-      {/* 공격덱 목록 */}
+      {/* 메인: 컴팩트 버튼 목록 + 상세 카드 (V1 2-컬럼) */}
       {!isSearch && !selectedDef ? (
-        <p className="text-slate-600 text-center py-12 text-sm">방어팀을 선택하거나 캐릭터명으로 검색하세요</p>
+        <p className="text-slate-600 text-center py-12 text-sm">방어팀을 선택하거나 검색하세요</p>
       ) : displayAttacks.length === 0 ? (
         <p className="text-slate-600 text-center py-12 text-sm">결과가 없어요</p>
       ) : (
-        <div className="space-y-3">
-          {displayAttacks.map(atk => {
-            const defTeam = isSearch ? defenseTeams.find(d => d.id === atk.defense_team_id) : null
-            const p = pct(atk.win, atk.lose)
-            return (
-              <div key={atk.id} className="bg-[#0f0f26] border border-amber-900/20 rounded-xl p-4">
-                {/* 검색 모드: 방어팀 이름 표시 */}
-                {defTeam && (
-                  <p className="text-[11px] text-amber-600/80 font-medium mb-1.5">{defTeam.name}</p>
-                )}
+        <div className="md:grid md:grid-cols-[1fr_340px] md:gap-4 md:items-start">
+          {/* 왼쪽: 컴팩트 공격덱 버튼 목록 */}
+          <div className="grid grid-cols-2 gap-2 mb-4 md:mb-0">
+            {displayAttacks.map(atk => {
+              const p = pct(atk.win, atk.lose)
+              const isHot    = p !== null && p >= 70
+              const isActive = validAtk?.id === atk.id
+              const defTeam  = isSearch ? defenseTeams.find(d => d.id === atk.defense_team_id) : null
 
-                {/* 공격팀 이름 + 타입 */}
-                <div className="flex items-start justify-between gap-2 mb-3">
-                  <p className="text-white font-semibold text-sm">{atk.name}</p>
+              return (
+                <button
+                  key={atk.id}
+                  onClick={() => setSelectedAtk(isActive ? null : atk)}
+                  className={cn(
+                    'text-left p-3 rounded-xl border transition-colors',
+                    isActive
+                      ? 'bg-amber-500/10 border-amber-500/40'
+                      : 'bg-[#0f0f26] border-amber-900/20 hover:border-amber-500/25'
+                  )}
+                >
+                  {defTeam && (
+                    <p className="text-[10px] text-amber-600/80 font-medium mb-0.5">{defTeam.name}</p>
+                  )}
+                  <p className="text-sm font-bold text-white leading-tight">
+                    {isHot && <span className="text-orange-400">🔥 </span>}
+                    {atk.name}
+                  </p>
                   {atk.type && (
                     <span className={cn(
-                      'text-[10px] font-bold px-2 py-0.5 rounded-full border whitespace-nowrap shrink-0',
+                      'inline-block text-[9px] font-bold px-1.5 py-0.5 rounded-full border mt-1',
                       TYPE_STYLE[atk.type] || 'bg-slate-500/15 text-slate-400 border-slate-500/30'
                     )}>
                       {atk.type}
                     </span>
                   )}
-                </div>
+                  <p className="text-xs text-slate-500 mt-1">
+                    {p !== null ? `${p}%` : '-'} · {atk.win}승{atk.lose}패
+                  </p>
+                </button>
+              )
+            })}
+          </div>
 
-                {/* 캐릭터 — 검색어 매칭 하이라이트 */}
-                {atk.characters?.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 mb-3">
-                    {atk.characters.map((c, i) => (
-                      <span
-                        key={i}
-                        className={cn(
-                          'text-xs px-2 py-0.5 rounded-md',
-                          isSearch && c.includes(charSearch)
-                            ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                            : 'bg-[#16163a] text-slate-300'
-                        )}
-                      >
-                        {c}
-                      </span>
-                    ))}
-                  </div>
-                )}
+          {/* 오른쪽: 상세 카드 */}
+          {validAtk ? (
+            <div className="sticky top-4">
+              <AttackDetailCard
+                atk={validAtk}
+                isAdmin={isAdmin}
+                onRecord={recordResult}
+                onClose={() => setSelectedAtk(null)}
+              />
+            </div>
+          ) : (
+            <div className="hidden md:flex items-center justify-center h-40 rounded-xl border border-amber-900/10 text-slate-600 text-sm">
+              공격덱을 선택하세요
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
 
-                {/* 세팅 정보 */}
-                <div className="space-y-1 text-xs">
-                  {atk.formation && <p><span className="text-slate-600">진형</span> <span className="text-slate-400">{atk.formation}</span></p>}
-                  {atk.ring      && <p><span className="text-slate-600">반지</span> <span className="text-slate-400">{atk.ring}</span></p>}
-                  {atk.skill     && <p><span className="text-slate-600">스킬순</span> <span className="text-slate-400">{atk.skill}</span></p>}
-                  {atk.pet       && <p><span className="text-slate-600">펫</span> <span className="text-slate-400">{atk.pet}</span></p>}
-                  {atk.armor     && (
-                    <p className="text-slate-400 whitespace-pre-line border-t border-amber-900/10 pt-2 mt-2">
-                      {atk.armor}
-                    </p>
-                  )}
-                </div>
+// ── 공격 상세 카드 ─────────────────────────────────────────────────────────
+function AttackDetailCard({
+  atk, isAdmin, onRecord, onClose,
+}: {
+  atk: AttackTeam
+  isAdmin: boolean
+  onRecord: (id: string, result: 'win' | 'lose') => void
+  onClose: () => void
+}) {
+  const p     = pct(atk.win, atk.lose)
+  const isHot = p !== null && p >= 70
 
-                {/* 승패 + 승률 */}
-                <div className="flex items-center justify-between mt-3 pt-3 border-t border-amber-900/10">
-                  <div className="flex items-center gap-2 text-sm">
-                    <span className="text-emerald-400 font-bold">{atk.win}승</span>
-                    <span className="text-slate-600">|</span>
-                    <span className="text-red-400 font-bold">{atk.lose}패</span>
-                    {p !== null && (
-                      <span className="text-slate-500 text-xs">({p}%)</span>
-                    )}
-                  </div>
-                  {isAdmin && (
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => recordResult(atk.id, 'win')}
-                        className="text-xs px-3 py-1 rounded-lg bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25 transition-colors font-medium"
-                      >승</button>
-                      <button
-                        onClick={() => recordResult(atk.id, 'lose')}
-                        className="text-xs px-3 py-1 rounded-lg bg-red-500/15 text-red-400 border border-red-500/30 hover:bg-red-500/25 transition-colors font-medium"
-                      >패</button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )
-          })}
+  return (
+    <div className="bg-[#0f0f26] border border-amber-500/20 rounded-xl p-4">
+      {/* 헤더: 이름 + 승률 */}
+      <div className="flex items-start justify-between mb-3">
+        <div>
+          <p className="text-white font-bold text-base leading-tight">
+            {isHot && <span className="text-orange-400">🔥 </span>}
+            {atk.name}
+          </p>
+          <p className="text-sm text-slate-400 mt-0.5">{atk.win}승 {atk.lose}패</p>
+        </div>
+        <div className="flex items-start gap-2">
+          {p !== null && (
+            <div className="text-right">
+              <p className="text-2xl font-black text-amber-400 leading-none">{p}%</p>
+              <p className="text-[9px] text-slate-500 mt-0.5">승률</p>
+            </div>
+          )}
+          <button onClick={onClose} className="text-slate-600 hover:text-slate-400 mt-0.5">
+            <X size={16} />
+          </button>
+        </div>
+      </div>
+
+      {/* 타입 배지 */}
+      {atk.type && (
+        <span className={cn(
+          'inline-block text-[10px] font-bold px-2 py-0.5 rounded-full border mb-3',
+          TYPE_STYLE[atk.type] || 'bg-slate-500/15 text-slate-400 border-slate-500/30'
+        )}>
+          {atk.type}
+        </span>
+      )}
+
+      {/* 캐릭터 칩 */}
+      {atk.characters?.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mb-3">
+          {atk.characters.map((c, i) => (
+            <span key={i} className="text-xs px-2 py-0.5 rounded-md bg-[#16163a] text-slate-300">{c}</span>
+          ))}
+        </div>
+      )}
+
+      {/* 진형 비주얼 (V1 스타일) */}
+      {atk.formation && (
+        <div className="mb-3">
+          <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wide mb-2">진형</p>
+          <FormationGrid text={atk.formation} />
+        </div>
+      )}
+
+      {/* 나머지 세팅 */}
+      <div className="space-y-1.5 text-xs mb-3">
+        {atk.ring  && <p><span className="text-slate-600 w-10 inline-block">반지</span> <span className="text-slate-300">{atk.ring}</span></p>}
+        {atk.skill && <p><span className="text-slate-600 w-10 inline-block">스킬순</span> <span className="text-slate-300">{atk.skill}</span></p>}
+        {atk.pet   && <p><span className="text-slate-600 w-10 inline-block">펫</span> <span className="text-slate-300">{atk.pet}</span></p>}
+        {atk.armor && (
+          <p className="text-slate-300 whitespace-pre-line border-t border-amber-900/10 pt-2 mt-2">
+            {atk.armor}
+          </p>
+        )}
+      </div>
+
+      {/* 관리자: 승패 버튼 */}
+      {isAdmin && (
+        <div className="flex gap-2 pt-3 border-t border-amber-900/10">
+          <button
+            onClick={() => onRecord(atk.id, 'win')}
+            className="flex-1 py-2.5 rounded-lg bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25 transition-colors text-sm font-bold"
+          >
+            🏆 승
+          </button>
+          <button
+            onClick={() => onRecord(atk.id, 'lose')}
+            className="flex-1 py-2.5 rounded-lg bg-red-500/15 text-red-400 border border-red-500/30 hover:bg-red-500/25 transition-colors text-sm font-bold"
+          >
+            💀 패
+          </button>
         </div>
       )}
     </div>
