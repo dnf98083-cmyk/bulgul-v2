@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useSession } from 'next-auth/react'
 import { supabase } from '@/lib/supabase/client'
-import { Target, Trophy, BookOpen } from 'lucide-react'
+import { Target, Trophy, BookOpen, Plus, Trash2, Pencil, X, Check, ChevronDown, ChevronUp } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { FormationGrid } from '@/components/FormationGrid'
 
@@ -13,14 +13,16 @@ type PveScore = {
   season: string; nickname: string; score: number; date: string | null
 }
 type Formation = { pet?: string; val: string; label?: string }
+type SubDetail = { name?: string; deck?: string; equip?: string; skill?: string; formations?: Formation[] }
 type BuildData = {
   buildName?: string; baseName?: string
   deck?: string; equip?: string; skill?: string; maker?: string
   formations?: Formation[]; formation?: string
-  details?: Record<string, { name?: string; deck?: string; equip?: string; skill?: string; formations?: Formation[] }>
+  details?: Record<string, SubDetail>
   [key: string]: unknown
 }
-type PveBuild = { id: string; category: string; key: string; sub_key: string; data: Record<string, unknown> }
+type RawData = { buildOrder?: string[] } & Record<string, BuildData | string[] | undefined>
+type PveBuild = { id: string; category: string; key: string; sub_key: string; data: RawData }
 
 // ── 상수 ──────────────────────────────────────────────────────────────────
 const DAYS     = ['월', '화', '수', '목', '금', '토', '일'] as const
@@ -35,9 +37,9 @@ const ADVENT_ITEMS = [
 ]
 const RAID_GROUPS = [
   { group:'일반 레이드', items:[
-    { key:'eye_of_doom', cat:'normal_raid', name:'파멸의 눈동자' },
-    { key:'umawang',     cat:'normal_raid', name:'우마왕' },
-    { key:'iron_predator',cat:'normal_raid',name:'강철의 포식자' },
+    { key:'eye_of_doom',   cat:'normal_raid', name:'파멸의 눈동자' },
+    { key:'umawang',       cat:'normal_raid', name:'우마왕' },
+    { key:'iron_predator', cat:'normal_raid', name:'강철의 포식자' },
   ]},
   { group:'돌발 레이드', items:[
     { key:'leonid',    cat:'event_raid', name:'레오니드' },
@@ -49,33 +51,140 @@ const DESTRUCT_TURNS = ['4','8','12','16','20']
 
 function fmtScore(n: number) { return n.toLocaleString('ko-KR') }
 
+// ── FormationEditor ────────────────────────────────────────────────────────
+function FormationEditor({
+  formations, onChange
+}: {
+  formations: Formation[]
+  onChange: (f: Formation[]) => void
+}) {
+  function update(i: number, field: keyof Formation, val: string) {
+    const next = formations.map((f, idx) => idx === i ? { ...f, [field]: val } : f)
+    onChange(next)
+  }
+  function add() { onChange([...formations, { val: '' }]) }
+  function remove(i: number) { onChange(formations.filter((_, idx) => idx !== i)) }
+
+  return (
+    <div className="space-y-2">
+      {formations.map((f, i) => (
+        <div key={i} className="space-y-1.5">
+          <div className="flex gap-2 items-center">
+            <input
+              className="flex-1 bg-[#0c0c1e] border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500/50"
+              placeholder="진형 (예: 기본 브브 여포 카이린 카밀레아 수퍼리어)"
+              value={f.val}
+              onChange={e => update(i, 'val', e.target.value)}
+            />
+            <button onClick={() => remove(i)} className="text-slate-600 hover:text-red-400 shrink-0">
+              <X size={14} />
+            </button>
+          </div>
+          {f.val && <div className="pl-1"><FormationGrid text={f.val} /></div>}
+          <input
+            className="w-full bg-[#0c0c1e] border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-400 focus:outline-none focus:border-amber-500/50"
+            placeholder="펫 (선택)"
+            value={f.pet ?? ''}
+            onChange={e => update(i, 'pet', e.target.value)}
+          />
+        </div>
+      ))}
+      <button
+        onClick={add}
+        className="flex items-center gap-1 text-xs text-amber-500/70 hover:text-amber-400 transition-colors"
+      >
+        <Plus size={12} /> 진형 추가
+      </button>
+    </div>
+  )
+}
+
+// ── ContentEditor: 덱/스킬/장비 공통 폼 ───────────────────────────────────
+function ContentEditor({
+  data, onChange
+}: {
+  data: { formations?: Formation[]; deck?: string; skill?: string; equip?: string }
+  onChange: (d: typeof data) => void
+}) {
+  return (
+    <div className="space-y-3">
+      <div>
+        <p className="text-[10px] text-slate-500 font-bold mb-1.5">🗺️ 진형</p>
+        <FormationEditor
+          formations={data.formations ?? []}
+          onChange={f => onChange({ ...data, formations: f })}
+        />
+      </div>
+      <div>
+        <p className="text-[10px] text-slate-500 font-bold mb-1">⚔️ 덱 조합</p>
+        <textarea
+          rows={3}
+          className="w-full bg-[#0c0c1e] border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500/50 resize-y"
+          placeholder="덱 조합 설명"
+          value={data.deck ?? ''}
+          onChange={e => onChange({ ...data, deck: e.target.value })}
+        />
+      </div>
+      <div>
+        <p className="text-[10px] text-slate-500 font-bold mb-1">📜 스킬 순서</p>
+        <textarea
+          rows={3}
+          className="w-full bg-[#0c0c1e] border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 font-mono focus:outline-none focus:border-amber-500/50 resize-y"
+          placeholder="스킬 순서"
+          value={data.skill ?? ''}
+          onChange={e => onChange({ ...data, skill: e.target.value })}
+        />
+      </div>
+      <div>
+        <p className="text-[10px] text-slate-500 font-bold mb-1">🛡️ 장비 세팅</p>
+        <textarea
+          rows={3}
+          className="w-full bg-[#0c0c1e] border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500/50 resize-y"
+          placeholder="장비 세팅"
+          value={data.equip ?? ''}
+          onChange={e => onChange({ ...data, equip: e.target.value })}
+        />
+      </div>
+    </div>
+  )
+}
+
 // ── 메인 ──────────────────────────────────────────────────────────────────
 export default function PvePage() {
   const { data: session } = useSession()
-  void session // 추후 빌드 수정 권한 체크에 사용
+  const isAdmin = ['관리자', '연구원'].includes((session?.user as { role?: string })?.role ?? '')
 
   const [mainTab, setMainTab] = useState<'score' | 'build'>('score')
 
   // 점수 탭 상태
-  const [scoreType, setScoreType]   = useState<'siege' | 'advent'>('siege')
+  const [scoreType, setScoreType]     = useState<'siege' | 'advent'>('siege')
   const [selectedDay, setSelectedDay] = useState('월')
-  const [season, setSeason]         = useState<'this' | 'last'>('this')
-  const [scores, setScores]         = useState<PveScore[]>([])
-  const [scLoading, setScLoading]   = useState(false)
+  const [season, setSeason]           = useState<'this' | 'last'>('this')
+  const [scores, setScores]           = useState<PveScore[]>([])
+  const [scLoading, setScLoading]     = useState(false)
 
   // 빌드 탭 상태
-  const [buildCat, setBuildCat]     = useState<'siege' | 'advent' | 'raid'>('siege')
+  const [buildCat, setBuildCat]         = useState<'siege' | 'advent' | 'raid'>('siege')
   const [selectedBoss, setSelectedBoss] = useState<{ key: string; cat: string; name: string } | null>(null)
-  const [turn, setTurn]             = useState('8')
-
-  const [rawBuilds, setRawBuilds]   = useState<PveBuild[]>([])
-  const [bdLoading, setBdLoading]   = useState(false)
+  const [turn, setTurn]                 = useState('8')
+  const [rawBuilds, setRawBuilds]       = useState<PveBuild[]>([])
+  const [bdLoading, setBdLoading]       = useState(false)
 
   // 빌드 탭 내 선택 상태
   const [activeBuildKey, setActiveBuildKey] = useState('build1')
-  const [activeDetail, setActiveDetail]     = useState<string | ''>('')
+  const [activeDetail, setActiveDetail]     = useState<string>('')
 
-  // ── 점수 로드 ────────────────────────────────────────────────────────────
+  // ── 편집 상태 ──────────────────────────────────────────────────────────
+  const [editMode, setEditMode]             = useState(false)
+  const [editBuild, setEditBuild]           = useState<BuildData>({})
+  const [editingDetail, setEditingDetail]   = useState<string>('')  // '' = base, key = sub-detail
+  const [newDetailName, setNewDetailName]   = useState('')
+  const [showAddDetail, setShowAddDetail]   = useState(false)
+  const [saving, setSaving]                 = useState(false)
+  const [newBuildName, setNewBuildName]     = useState('')
+  const [showAddBuild, setShowAddBuild]     = useState(false)
+
+  // ── 점수 로드 ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (mainTab !== 'score') return
     setScLoading(true)
@@ -86,12 +195,13 @@ export default function PvePage() {
       .then(({ data }) => { if (data) setScores(data as PveScore[]); setScLoading(false) })
   }, [mainTab, scoreType, selectedDay, season])
 
-  // ── 빌드 로드 ────────────────────────────────────────────────────────────
+  // ── 빌드 로드 ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (mainTab !== 'build' || !selectedBoss) return
     setBdLoading(true)
     setActiveBuildKey('build1')
     setActiveDetail('')
+    setEditMode(false)
     let q = supabase.from('pve_builds').select('*')
       .eq('category', selectedBoss.cat).eq('key', selectedBoss.key)
     if (selectedBoss.cat === 'advent' && (selectedBoss.key === 'destruct1' || selectedBoss.key === 'destruct2')) {
@@ -100,7 +210,7 @@ export default function PvePage() {
     q.then(({ data }) => { if (data) setRawBuilds(data as PveBuild[]); setBdLoading(false) })
   }, [mainTab, selectedBoss, turn])
 
-  // ── 빌드 데이터 파싱 ─────────────────────────────────────────────────────
+  // ── 빌드 데이터 파싱 ───────────────────────────────────────────────────
   const buildSlots = useMemo(() => {
     if (!rawBuilds.length) return []
     const d = rawBuilds[0].data
@@ -130,17 +240,168 @@ export default function PvePage() {
     return bd.formations ?? (bd.formation ? [{ val: bd.formation } as Formation] : [])
   }, [currentData])
 
+  // ── 편집 모드 진입 ─────────────────────────────────────────────────────
+  function enterEdit() {
+    const base = currentBuild ?? { buildName: '새 빌드', baseName: '기본', formations: [], details: {} }
+    setEditBuild(JSON.parse(JSON.stringify(base)))
+    setEditingDetail('')
+    setShowAddDetail(false)
+    setEditMode(true)
+  }
+
+  function cancelEdit() {
+    setEditMode(false)
+    setEditingDetail('')
+    setShowAddDetail(false)
+  }
+
+  // ── 저장 ───────────────────────────────────────────────────────────────
+  async function saveEdit() {
+    if (!selectedBoss) return
+    setSaving(true)
+
+    const currentData = rawBuilds.length > 0 ? { ...rawBuilds[0].data } : {} as RawData
+    const bk = activeBuildKey
+    currentData[bk] = editBuild as unknown as BuildData
+
+    // buildOrder 동기화
+    const existing = (currentData.buildOrder as string[] | undefined) ?? []
+    if (!existing.includes(bk)) currentData.buildOrder = [...existing, bk]
+
+    if (rawBuilds.length > 0) {
+      await supabase.from('pve_builds').update({ data: currentData }).eq('id', rawBuilds[0].id)
+    } else {
+      const sub = (selectedBoss.key === 'destruct1' || selectedBoss.key === 'destruct2') ? turn : ''
+      await supabase.from('pve_builds').insert({
+        category: selectedBoss.cat,
+        key: selectedBoss.key,
+        sub_key: sub,
+        data: currentData,
+      })
+    }
+
+    // 리로드
+    let q = supabase.from('pve_builds').select('*')
+      .eq('category', selectedBoss.cat).eq('key', selectedBoss.key)
+    if (selectedBoss.cat === 'advent' && (selectedBoss.key === 'destruct1' || selectedBoss.key === 'destruct2')) {
+      q = q.eq('sub_key', turn)
+    }
+    const { data } = await q
+    if (data) setRawBuilds(data as PveBuild[])
+    setSaving(false)
+    setEditMode(false)
+    setEditingDetail('')
+  }
+
+  // ── 빌드 슬롯 추가 ─────────────────────────────────────────────────────
+  async function addBuildSlot() {
+    if (!selectedBoss || !newBuildName.trim()) return
+    setSaving(true)
+    const currentRawData = rawBuilds.length > 0 ? { ...rawBuilds[0].data } : {} as RawData
+    const existingKeys = Object.keys(currentRawData).filter(k => k.startsWith('build') && k !== 'buildOrder')
+    const nextNum = existingKeys.length + 1
+    const newKey = `build${nextNum}`
+    currentRawData[newKey] = { buildName: newBuildName.trim(), formations: [], details: {} } as unknown as BuildData
+    const order = (currentRawData.buildOrder as string[] | undefined) ?? []
+    currentRawData.buildOrder = [...order, newKey]
+
+    if (rawBuilds.length > 0) {
+      await supabase.from('pve_builds').update({ data: currentRawData }).eq('id', rawBuilds[0].id)
+    } else {
+      const sub = (selectedBoss.key === 'destruct1' || selectedBoss.key === 'destruct2') ? turn : ''
+      await supabase.from('pve_builds').insert({
+        category: selectedBoss.cat, key: selectedBoss.key, sub_key: sub, data: currentRawData,
+      })
+    }
+
+    let q = supabase.from('pve_builds').select('*')
+      .eq('category', selectedBoss.cat).eq('key', selectedBoss.key)
+    if (selectedBoss.cat === 'advent' && (selectedBoss.key === 'destruct1' || selectedBoss.key === 'destruct2')) {
+      q = q.eq('sub_key', turn)
+    }
+    const { data } = await q
+    if (data) setRawBuilds(data as PveBuild[])
+    setActiveBuildKey(newKey)
+    setNewBuildName('')
+    setShowAddBuild(false)
+    setSaving(false)
+  }
+
+  // ── 빌드 슬롯 삭제 ─────────────────────────────────────────────────────
+  async function deleteBuildSlot(bk: string) {
+    if (!rawBuilds.length || !confirm(`"${bk}" 빌드를 삭제할까요?`)) return
+    setSaving(true)
+    const d = { ...rawBuilds[0].data }
+    delete d[bk]
+    d.buildOrder = ((d.buildOrder as string[] | undefined) ?? []).filter(k => k !== bk)
+    await supabase.from('pve_builds').update({ data: d }).eq('id', rawBuilds[0].id)
+    const remaining = buildSlots.filter(b => b.key !== bk)
+    setActiveBuildKey(remaining[0]?.key ?? 'build1')
+    let q = supabase.from('pve_builds').select('*')
+      .eq('category', selectedBoss!.cat).eq('key', selectedBoss!.key)
+    if (selectedBoss!.cat === 'advent' && (selectedBoss!.key === 'destruct1' || selectedBoss!.key === 'destruct2')) {
+      q = q.eq('sub_key', turn)
+    }
+    const { data } = await q
+    if (data) setRawBuilds(data as PveBuild[])
+    setSaving(false)
+  }
+
+  // ── 세부사항 추가 ──────────────────────────────────────────────────────
+  function addDetail() {
+    if (!newDetailName.trim()) return
+    const key = `detail_${Date.now()}`
+    const next: BuildData = {
+      ...editBuild,
+      details: { ...(editBuild.details ?? {}), [key]: { name: newDetailName.trim(), formations: [], deck: '', skill: '', equip: '' } }
+    }
+    setEditBuild(next)
+    setEditingDetail(key)
+    setNewDetailName('')
+    setShowAddDetail(false)
+  }
+
+  // ── 세부사항 삭제 ──────────────────────────────────────────────────────
+  function deleteDetail(key: string) {
+    const next = { ...editBuild }
+    const details = { ...(next.details ?? {}) }
+    delete details[key]
+    next.details = details
+    setEditBuild(next)
+    if (editingDetail === key) setEditingDetail('')
+  }
+
+  // ── 편집 중인 content data ─────────────────────────────────────────────
+  const editContent = useMemo(() => {
+    if (editingDetail && editBuild.details?.[editingDetail]) {
+      return editBuild.details[editingDetail]
+    }
+    return editBuild
+  }, [editBuild, editingDetail])
+
+  function updateEditContent(patch: Partial<BuildData | SubDetail>) {
+    if (editingDetail) {
+      setEditBuild(prev => ({
+        ...prev,
+        details: { ...(prev.details ?? {}), [editingDetail]: { ...(prev.details?.[editingDetail] ?? {}), ...patch } }
+      }))
+    } else {
+      setEditBuild(prev => ({ ...prev, ...patch }))
+    }
+  }
+
   function selectBoss(key: string, cat: string, name: string) {
     setSelectedBoss({ key, cat, name })
     setActiveBuildKey('build1')
     setActiveDetail('')
+    setEditMode(false)
   }
 
-  // 카테고리 변경 시 보스 선택 초기화
   function changeCat(cat: 'siege' | 'advent' | 'raid') {
     setBuildCat(cat)
     setSelectedBoss(null)
     setRawBuilds([])
+    setEditMode(false)
   }
 
   return (
@@ -166,7 +427,7 @@ export default function PvePage() {
         ))}
       </div>
 
-      {/* ── 점수 탭 ────────────────────────────────────────────────────────── */}
+      {/* ── 점수 탭 ──────────────────────────────────────────────────────── */}
       {mainTab === 'score' && (
         <div>
           <div className="flex gap-2 mb-4">
@@ -227,7 +488,7 @@ export default function PvePage() {
         </div>
       )}
 
-      {/* ── 빌드 탭 (V1 스타일: 왼쪽 보스 목록 + 오른쪽 상세) ────────────── */}
+      {/* ── 빌드 탭 ──────────────────────────────────────────────────────── */}
       {mainTab === 'build' && (
         <div>
           {/* 카테고리 탭 */}
@@ -242,9 +503,8 @@ export default function PvePage() {
           </div>
 
           <div className="md:grid md:grid-cols-[160px_1fr] md:gap-4 md:items-start">
-            {/* 왼쪽: 보스 버튼 그리드 */}
+            {/* 왼쪽: 보스 버튼 */}
             <div>
-              {/* 공성전: 요일 버튼 */}
               {buildCat === 'siege' && (
                 <div className="grid grid-cols-4 md:grid-cols-2 gap-1.5 mb-4 md:mb-0">
                   {DAYS.map(d => (
@@ -260,7 +520,6 @@ export default function PvePage() {
                 </div>
               )}
 
-              {/* 강림: 보스 버튼 */}
               {buildCat === 'advent' && (
                 <div className="flex flex-wrap md:flex-col gap-1.5 mb-4 md:mb-0">
                   {ADVENT_ITEMS.map(item => (
@@ -276,7 +535,6 @@ export default function PvePage() {
                 </div>
               )}
 
-              {/* 레이드: 그룹별 보스 */}
               {buildCat === 'raid' && (
                 <div className="space-y-3 mb-4 md:mb-0">
                   {RAID_GROUPS.map(g => (
@@ -308,10 +566,20 @@ export default function PvePage() {
             ) : (
               <div className="mt-4 md:mt-0">
                 <div className="bg-[#0f0f26] border border-amber-500/20 rounded-xl p-4">
-                  {/* 보스 이름 */}
-                  <p className="text-white font-bold text-base mb-3">{selectedBoss.name}</p>
+                  {/* 보스 이름 + 수정 버튼 */}
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-white font-bold text-base">{selectedBoss.name}</p>
+                    {isAdmin && !editMode && !bdLoading && (
+                      <button
+                        onClick={enterEdit}
+                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-blue-500/10 text-blue-400 border border-blue-500/25 hover:bg-blue-500/20 transition-colors"
+                      >
+                        <Pencil size={11} /> 수정
+                      </button>
+                    )}
+                  </div>
 
-                  {/* 파괴신 턴 수 선택 */}
+                  {/* 파괴신 턴 수 */}
                   {(selectedBoss.key === 'destruct1' || selectedBoss.key === 'destruct2') && (
                     <div className="mb-3">
                       <p className="text-[10px] text-slate-500 font-bold mb-1.5">⏳ 턴 수</p>
@@ -329,9 +597,159 @@ export default function PvePage() {
 
                   {bdLoading ? (
                     <p className="text-slate-500 text-sm py-8 text-center">불러오는 중...</p>
+                  ) : editMode ? (
+                    /* ── 편집 모드 ──────────────────────────────────── */
+                    <div>
+                      {/* 빌드 탭 (편집 모드에서도 탭 전환 가능) */}
+                      <div className="flex gap-1.5 overflow-x-auto pb-1 mb-3 items-center">
+                        {buildSlots.map(b => (
+                          <div key={b.key} className="flex items-center gap-1 shrink-0">
+                            <button
+                              onClick={() => { setActiveBuildKey(b.key); setEditBuild(JSON.parse(JSON.stringify(b.data))); setEditingDetail('') }}
+                              className={cn('px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border',
+                                activeBuildKey === b.key
+                                  ? 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+                                  : 'text-slate-500 border-slate-800 hover:text-slate-300')}>
+                              {b.label}
+                            </button>
+                            <button onClick={() => deleteBuildSlot(b.key)} className="text-slate-600 hover:text-red-400">
+                              <Trash2 size={11} />
+                            </button>
+                          </div>
+                        ))}
+                        {/* 빌드 추가 */}
+                        {showAddBuild ? (
+                          <div className="flex items-center gap-1 shrink-0">
+                            <input
+                              autoFocus
+                              className="w-24 bg-[#0c0c1e] border border-slate-700 rounded-lg px-2 py-1 text-xs text-slate-200 focus:outline-none"
+                              placeholder="빌드 이름"
+                              value={newBuildName}
+                              onChange={e => setNewBuildName(e.target.value)}
+                              onKeyDown={e => { if (e.key === 'Enter') addBuildSlot(); if (e.key === 'Escape') setShowAddBuild(false) }}
+                            />
+                            <button onClick={addBuildSlot} className="text-emerald-400 hover:text-emerald-300"><Check size={13} /></button>
+                            <button onClick={() => setShowAddBuild(false)} className="text-slate-600 hover:text-slate-400"><X size={13} /></button>
+                          </div>
+                        ) : (
+                          <button onClick={() => setShowAddBuild(true)} className="flex items-center gap-0.5 text-xs text-amber-500/70 hover:text-amber-400 shrink-0">
+                            <Plus size={12} /> 빌드
+                          </button>
+                        )}
+                      </div>
+
+                      {/* 빌드 기본 정보 */}
+                      <div className="grid grid-cols-2 gap-2 mb-3">
+                        <div>
+                          <p className="text-[10px] text-slate-500 font-bold mb-1">빌드 이름</p>
+                          <input
+                            className="w-full bg-[#0c0c1e] border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500/50"
+                            value={editBuild.buildName ?? ''}
+                            onChange={e => setEditBuild(prev => ({ ...prev, buildName: e.target.value }))}
+                          />
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-slate-500 font-bold mb-1">기본 탭 이름</p>
+                          <input
+                            className="w-full bg-[#0c0c1e] border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500/50"
+                            value={editBuild.baseName ?? '기본'}
+                            onChange={e => setEditBuild(prev => ({ ...prev, baseName: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+
+                      {/* 세부사항 선택 탭 (편집) */}
+                      <div className="flex flex-wrap gap-1.5 mb-3 items-center">
+                        <button
+                          onClick={() => setEditingDetail('')}
+                          className={cn('px-2.5 py-1 rounded-full text-xs font-medium transition-colors border',
+                            editingDetail === '' ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' : 'text-slate-500 border-slate-700 hover:text-slate-300')}>
+                          {editBuild.baseName ?? '기본'}
+                        </button>
+                        {Object.entries(editBuild.details ?? {}).map(([k, v]) => (
+                          <div key={k} className="flex items-center gap-0.5">
+                            <button
+                              onClick={() => setEditingDetail(k)}
+                              className={cn('px-2.5 py-1 rounded-full text-xs font-medium transition-colors border',
+                                editingDetail === k ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' : 'text-slate-500 border-slate-700 hover:text-slate-300')}>
+                              {v.name ?? '세부사항'}
+                            </button>
+                            <button onClick={() => deleteDetail(k)} className="text-slate-600 hover:text-red-400">
+                              <Trash2 size={10} />
+                            </button>
+                          </div>
+                        ))}
+                        {/* 세부사항 추가 */}
+                        {showAddDetail ? (
+                          <div className="flex items-center gap-1">
+                            <input
+                              autoFocus
+                              className="w-24 bg-[#0c0c1e] border border-slate-700 rounded-lg px-2 py-0.5 text-xs text-slate-200 focus:outline-none"
+                              placeholder="이름"
+                              value={newDetailName}
+                              onChange={e => setNewDetailName(e.target.value)}
+                              onKeyDown={e => { if (e.key === 'Enter') addDetail(); if (e.key === 'Escape') setShowAddDetail(false) }}
+                            />
+                            <button onClick={addDetail} className="text-emerald-400 hover:text-emerald-300"><Check size={13} /></button>
+                            <button onClick={() => setShowAddDetail(false)} className="text-slate-600 hover:text-slate-400"><X size={13} /></button>
+                          </div>
+                        ) : (
+                          <button onClick={() => setShowAddDetail(true)} className="flex items-center gap-0.5 text-xs text-amber-500/70 hover:text-amber-400">
+                            <Plus size={11} /> 세부사항
+                          </button>
+                        )}
+                      </div>
+
+                      {/* 세부사항 이름 수정 (선택 시) */}
+                      {editingDetail && (
+                        <div className="mb-3">
+                          <p className="text-[10px] text-slate-500 font-bold mb-1">세부사항 이름</p>
+                          <input
+                            className="w-full bg-[#0c0c1e] border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500/50"
+                            value={(editBuild.details?.[editingDetail]?.name) ?? ''}
+                            onChange={e => updateEditContent({ name: e.target.value })}
+                          />
+                        </div>
+                      )}
+
+                      {/* 내용 편집 */}
+                      <ContentEditor
+                        data={editContent}
+                        onChange={patch => updateEditContent(patch)}
+                      />
+
+                      {/* 저장/취소 */}
+                      <div className="flex gap-2 mt-4">
+                        <button
+                          onClick={saveEdit}
+                          disabled={saving}
+                          className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-sm font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30 hover:bg-amber-500/25 transition-colors disabled:opacity-50"
+                        >
+                          <Check size={14} /> {saving ? '저장 중...' : '저장'}
+                        </button>
+                        <button
+                          onClick={cancelEdit}
+                          className="px-4 py-2 rounded-xl text-sm font-medium text-slate-500 border border-slate-700 hover:text-slate-300 transition-colors"
+                        >
+                          취소
+                        </button>
+                      </div>
+                    </div>
                   ) : buildSlots.length === 0 ? (
-                    <p className="text-slate-600 text-sm py-8 text-center">등록된 빌드가 없어요</p>
+                    /* ── 빌드 없음 ──────────────────────────────────── */
+                    <div className="py-8 text-center">
+                      <p className="text-slate-600 text-sm mb-3">등록된 빌드가 없어요</p>
+                      {isAdmin && (
+                        <button
+                          onClick={enterEdit}
+                          className="flex items-center gap-1.5 mx-auto px-4 py-2 rounded-xl text-sm font-medium bg-amber-500/10 text-amber-400 border border-amber-500/25 hover:bg-amber-500/20 transition-colors"
+                        >
+                          <Plus size={14} /> 빌드 등록
+                        </button>
+                      )}
+                    </div>
                   ) : (
+                    /* ── 보기 모드 ──────────────────────────────────── */
                     <>
                       {/* 빌드 탭 */}
                       {buildSlots.length > 1 && (
@@ -369,7 +787,7 @@ export default function PvePage() {
                         </div>
                       )}
 
-                      {/* 진형 (FormationGrid) */}
+                      {/* 진형 */}
                       {formations.length > 0 && (
                         <div className="mb-3">
                           <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wide mb-2">🗺️ 진형</p>
@@ -385,7 +803,6 @@ export default function PvePage() {
                         </div>
                       )}
 
-                      {/* 덱·스킬·장비 */}
                       {currentData?.deck && (
                         <div className="mb-2">
                           <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wide mb-1">⚔️ 덱 조합</p>
